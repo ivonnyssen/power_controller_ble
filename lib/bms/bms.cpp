@@ -50,10 +50,10 @@ BMS::BMS() {
     isChargeFetEnabled = false;
     numCells = 0;
     numTemperatureSensors = 0;
-    for (uint8_t i; i < NUM_TEMP_SENSORS; i++) {
+    for (uint8_t i = 0; i < NUM_TEMP_SENSORS; i++) {
         temperatures[i] = 0;
     }
-    for (uint8_t i; i < NUM_CELLS; i++) {
+    for (uint8_t i = 0; i < NUM_CELLS; i++) {
         cellVoltages[i] = 0;
     }
     name = String("");

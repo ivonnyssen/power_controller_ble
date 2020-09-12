@@ -2,16 +2,15 @@
  Power Controller on a web page
  Circuit:
  * Ethernet shield attached to pins 10, 11, 12, 13
- * Relay module is attached to digital pins 5, 6, 7, 8
+ * Relay module is attached to digital pins 2, 3, 4, 5
  */
 
 #include <SPI.h>
+#include <SD.h>
 #include <Ethernet.h>
 #include <mbed.h>
 #include <page.h>
-#define TINY_BME280_I2C
-#include <TinyBME280.h>
-#include <Wire.h>
+#include <Adafruit_BME280.h>
 #include <bms.h>
 
 #define GET 0
@@ -66,6 +65,8 @@ void printSensorsJson(EthernetClient &client);
 
 void printIndexPage(EthernetClient &client);
 
+uint8_t getPinForPort(uint8_t port);
+
 // Enter a MAC address and IP address for your controller below.
 // The IP address will be dependent on your local network:
 byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
@@ -87,15 +88,18 @@ EthernetUDP Udp;
 
 //sensor data
 const int numSensorRecords = 24 * 4;
-SensorData sensorData[numSensorRecords];
+SensorData sensorData[numSensorRecords] = {{0}};
 time_t lastSensorLogTime;
 
+#define PORT0_PIN 2
+#define PORT1_PIN 3
+#define PORT2_PIN 5
+#define PORT3_PIN 6
 //variables for states
 bool ports[4] {false,false,false,false};
-#define BASE_PORT_PIN 3
 
 //BME280
-tiny::BME280 bme;
+Adafruit_BME280 bme;
 
 //Serial BMS connection
 BMS bms;
@@ -104,13 +108,20 @@ time_t lastBmsCheckTime;
 #ifndef UNIT_TEST
 void setup() {
     // Open serial communications and wait for port to open:
-    Serial.begin(9600);
+    Serial.begin(115200);
+
+    //initialize sd card
+    pinMode(10,OUTPUT);
+    digitalWrite(10, HIGH);
+    if (!SD.begin(4)) {
+        if(Serial) Serial.println("Card failed, or not present");
+    }
 
     // start the Ethernet connection and the server:
     EthernetClass::begin(mac);
     server.begin();
 #if DEBUG
-    Serial.println(EthernetClass::localIP());
+    if(Serial) Serial.println(EthernetClass::localIP());
 #endif
     //UDP for NTP
     Udp.begin(localPort);
@@ -119,20 +130,20 @@ void setup() {
     lastSensorLogTime = time(nullptr);
 
     //relay module setup
-    pinMode(BASE_PORT_PIN, OUTPUT);
-    pinMode(BASE_PORT_PIN  + 1, OUTPUT);
-    pinMode(BASE_PORT_PIN + 2, OUTPUT);
-    pinMode(BASE_PORT_PIN +3, OUTPUT);
-    for(int i = BASE_PORT_PIN; i < BASE_PORT_PIN + NUM_PORTS; i++){
-        ports[i - BASE_PORT_PIN] = digitalRead(i) != HIGH;
+    for(int i=0; i < NUM_PORTS; i++){
+        pinMode(getPinForPort(i), OUTPUT);
+        ports[i] = digitalRead(getPinForPort(i)) != HIGH;
     }
 
-    //initialize sensor stuff below
-    memset(&sensorData, 0, sizeof(SensorData));
-
-    //bme280
-    Wire.begin();
+    //bme280, reade the first value - it is likely garbage
     bme.begin();
+    char buffer[64] = {0};
+    struct tm* logTime = localtime(&lastSensorLogTime);
+    sprintf(buffer, "%02d-%02d %02d:%02d, %.2f, %.2f, %.2f", logTime->tm_mon + 1, logTime->tm_mday, logTime->tm_hour, logTime->tm_min,
+            bme.readPressure()/ 100.0F, bme.readTemperature(), bme.readHumidity());
+#if DEBUG
+    if(Serial) Serial.println(buffer);
+#endif
 
     //BMS
     bms.begin(&Serial1);
@@ -152,7 +163,8 @@ void  loop() {
         lastSensorLogTime = seconds;
     }
 
-    if(seconds % 30 == 0 && seconds != lastBmsCheckTime){
+    //make sure not to use a prime number, so timeouts do not prevent sensor reads too often 900 * 61 = 54900
+    if(seconds % 61 == 0 && seconds != lastBmsCheckTime){
         bms.poll();
         lastBmsCheckTime = seconds;
     }
@@ -164,18 +176,42 @@ void  loop() {
 }
 #endif
 
+uint8_t getPinForPort(uint8_t port){
+    switch (port) {
+        case 0:
+            return PORT0_PIN;
+        case 1:
+            return PORT1_PIN;
+        case 2:
+            return PORT2_PIN;
+        case 3:
+            return PORT3_PIN;
+        default:
+            return PORT0_PIN;
+    }
+}
+
 void measureAndLogSensors(time_t &now) {
     for(int i = 0; i < numSensorRecords - 1; i++){
         sensorData[i] = sensorData[i + 1];
     }
-    sensorData[numSensorRecords - 1] = {now, static_cast<float>(bme.readFixedPressure() / 100.0), static_cast<float>(bme.readFixedTempC() / 100.0), static_cast<float>(bme.readFixedHumidity() / 1000.0)};
+    sensorData[numSensorRecords - 1] = {now, bme.readPressure() / 100.0F, bme.readTemperature(), bme.readHumidity()};
 
-#if DEBUG
-    char buffer[32] = {0};
+    char buffer[64] = {0};
     struct tm* logTime = localtime(&sensorData[numSensorRecords - 1].readoutTime);
-    sprintf(buffer, "%02d-%02d %02d:%02d, %s, %s, %s", logTime->tm_mon, logTime->tm_mday, logTime->tm_hour, logTime->tm_min, String(sensorData[numSensorRecords - 1].pressure).c_str(),
-            String(sensorData[numSensorRecords - 1].temperature).c_str(), String(sensorData[numSensorRecords - 1].humidity).c_str());
-    Serial.println(buffer);
+    sprintf(buffer, "%02d-%02d %02d:%02d, %.2f, %.2f, %.2f", logTime->tm_mon + 1, logTime->tm_mday, logTime->tm_hour, logTime->tm_min,
+            sensorData[numSensorRecords - 1].pressure, sensorData[numSensorRecords - 1].temperature, sensorData[numSensorRecords - 1].humidity);
+    char filename[12] = {0};
+    int result = snprintf(filename, sizeof(filename), "%04d%02d.log", logTime->tm_year + 1900, logTime->tm_mon + 1);
+    if(result < 0) {
+        if(Serial) Serial.println("buffer overflow in filename");
+    } else{
+        File logFile = SD.open(filename, FILE_WRITE);
+        logFile.println(buffer);
+        logFile.close();
+    }
+#if DEBUG
+    if(Serial) Serial.println(buffer);
 #endif
 }
 
@@ -190,18 +226,18 @@ void handleHttpRequest(EthernetClient &client) {
                 switch(request.command){
                     case OFF:
                         ports[request.powerPort] = false;
-                        digitalWrite(request.powerPort + BASE_PORT_PIN, HIGH);
+                        digitalWrite(getPinForPort(request.powerPort), HIGH);
                         break;
                     case ON:
                         ports[request.powerPort] = true;
-                        digitalWrite(request.powerPort + BASE_PORT_PIN, LOW);
+                        digitalWrite(getPinForPort(request.powerPort), LOW);
                         break;
                     case CYCLE:
                         ports[request.powerPort] = false;
-                        digitalWrite(request.powerPort + BASE_PORT_PIN, HIGH);
+                        digitalWrite(getPinForPort(request.powerPort), HIGH);
                         delay(1000);
                         ports[request.powerPort] = true;
-                        digitalWrite(request.powerPort + BASE_PORT_PIN, LOW);
+                        digitalWrite(getPinForPort(request.powerPort), LOW);
                         break;
                     default:
                         break;
@@ -221,7 +257,7 @@ Request parseRequest(EthernetClient client) {
 
     String s = client.readStringUntil('\n');
 #if DEBUG
-    Serial.println(s);
+    if(Serial) Serial.println(s);
 #endif
     if(s.startsWith("GET")){
         result.type = GET;
@@ -241,7 +277,7 @@ Request parseRequest(EthernetClient client) {
         result.type = UNSUPPORTED;
     }
 #if DEBUG
-    Serial.println(result.url);
+    if(Serial) Serial.println(result.url);
 #endif
     return result;
 }
@@ -250,7 +286,7 @@ void readAndLogRequestLines(EthernetClient client) {
     while (client.available()) {
         String s = client.readStringUntil('\n');
 #if DEBUG
-        Serial.println(s);
+        if(Serial) Serial.println(s);
 #endif
         if(s.equals(String('\r'))){
             break;
@@ -265,7 +301,6 @@ void printWebPage(EthernetClient client, const String &url, const int type) {
         char buffer[64] = {0};
         sprintf(buffer, "Location: http://%d.%d.%d.%d%s",EthernetClass::localIP()[0],EthernetClass::localIP()[1],
                 EthernetClass::localIP()[2],EthernetClass::localIP()[3],url.c_str());
-        Serial.println(buffer);
         client.println(buffer);
     } else {
         client.println("HTTP/1.1 200 OK");
@@ -281,6 +316,8 @@ void printWebPage(EthernetClient client, const String &url, const int type) {
         client.println("Content-Type: text/html");
     } else if(url.endsWith(".json")){
         client.println("Content-Type: application/json");
+    } else if(url.endsWith(".log")) {
+        client.println("Content-Type: text/csv");
     }
     client.println("Connection: close");
     client.println();
@@ -305,6 +342,14 @@ void printWebPage(EthernetClient client, const String &url, const int type) {
         sprintf(buffer,R"===({"name": "Port 4", "state": %s})===", ports[3] ? "true" : "false");
         client.println(buffer);
         client.println(R"===(]})===");
+    } else {
+        File page = SD.open(url.substring(1));
+        char buffer[1024] = {0};
+        while(page.available() > 0){
+            int bytesToBeRead = min((unsigned int) page.available(), sizeof(buffer));
+            page.read(buffer, bytesToBeRead);
+            client.write(buffer, bytesToBeRead);
+        }
     }
 }
 
@@ -336,8 +381,8 @@ void printSensorsJson(EthernetClient &client) {
     for(int i = 0; i < numSensorRecords; i++){
         char buffer[128] = {0};
         struct tm* logTime = localtime(&sensorData[i].readoutTime);
-        sprintf(buffer, R"===({"time":"%02d-%02d %02d:%02d", "pressure":%s, "temp":%s, "humidity":%s})===", logTime->tm_mon, logTime->tm_mday, logTime->tm_hour, logTime->tm_min,
-                String(sensorData[i].pressure).c_str(), String(sensorData[i].temperature).c_str(), String(sensorData[i].humidity).c_str());
+        sprintf(buffer, R"===({"time":"%02d-%02d %02d:%02d", "pressure":%.2f, "temp":%.2f, "humidity":%.2f})===", logTime->tm_mon + 1, logTime->tm_mday, logTime->tm_hour,
+                logTime->tm_min, sensorData[i].pressure, sensorData[i].temperature, sensorData[i].humidity);
         client.print(buffer);
         if(i != numSensorRecords - 1) {
             client.println(",");
@@ -350,27 +395,27 @@ void printSensorsJson(EthernetClient &client) {
 
 void printBmsStates(EthernetClient &client) {
     char buffer[64] = {0};
-    sprintf(buffer, R"===("charge": "%sA",)===", String(bms.current < 0 ? 0 : bms.current).c_str());
+    sprintf(buffer, R"===("charge": "%.2fA",)===", bms.current < 0 ? 0 : bms.current);
     client.println(buffer);
-    sprintf(buffer, R"===("discharge": "%sA",)===", String(bms.current < 0 ? -bms.current : 0).c_str());
+    sprintf(buffer, R"===("discharge": "%.2fA",)===", bms.current < 0 ? -bms.current : 0);
     client.println(buffer);
-    sprintf(buffer, R"===("totalVoltage": "%sV",)===", String(bms.totalVoltage).c_str());
+    sprintf(buffer, R"===("totalVoltage": "%.2fV",)===", bms.totalVoltage);
     client.println(buffer);
     sprintf(buffer, R"===("remainingSOC": %d,)===", bms.stateOfCharge);
     client.println(buffer);
-    sprintf(buffer, R"===("minVoltage": "%sV",)===", String(bms.minVoltage24).c_str());
+    sprintf(buffer, R"===("minVoltage": "%.2fV",)===", bms.minVoltage24);
     client.println(buffer);
-    sprintf(buffer, R"===("maxVoltage": "%sV",)===", String(bms.maxVoltage24).c_str());
+    sprintf(buffer, R"===("maxVoltage": "%.2fV",)===", bms.maxVoltage24);
     client.println(buffer);
-    sprintf(buffer, R"===("maxCharge": "%sA",)===", String(bms.maxCharge24).c_str());
+    sprintf(buffer, R"===("maxCharge": "%.2fA",)===", bms.maxCharge24);
     client.println(buffer);
-    sprintf(buffer, R"===("maxDischarge": "%sA",)===", String(bms.maxDischarge24).c_str());
+    sprintf(buffer, R"===("maxDischarge": "%.2fA",)===", bms.maxDischarge24);
     client.println(buffer);
-    sprintf(buffer, R"===("maxPower": "%sW",)===", String(bms.balanceCapacity).c_str());
+    sprintf(buffer, R"===("maxPower": "%.2fW",)===", bms.balanceCapacity);
     client.println(buffer);
-    sprintf(buffer, R"===("temp1": "%sC",)===", String(bms.temperatures[0]).c_str());
+    sprintf(buffer, R"===("temp1": "%.2fC",)===", bms.temperatures[0]);
     client.println(buffer);
-    sprintf(buffer, R"===("temp2": "%sC")===", String(bms.temperatures[1]).c_str());
+    sprintf(buffer, R"===("temp2": "%.2fC")===", bms.temperatures[1]);
     client.println(buffer);
     client.println("}");
 }
@@ -379,7 +424,7 @@ void printCellVoltages(EthernetClient &client) {
     client.println(R"===({ "cellVoltages":[)===");
     for(int i = 0; i < NUM_CELLS; i++){
         char buffer[64] = {0};
-        sprintf(buffer, R"===({"cell":"%d", "cellVoltage":%s, "balancing": %s})===", i, String(bms.cellVoltages[i]).c_str(), bms.isBalancing(i) ? "true" : "false");
+        sprintf(buffer, R"===({"cell":"%d", "cellVoltage":%.3f, "balancing": %s})===", i, bms.cellVoltages[i], bms.isBalancing(i) ? "true" : "false");
         client.print(buffer);
         if(i != NUM_CELLS - 1) {
             client.println(",");
