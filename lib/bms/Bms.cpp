@@ -1,5 +1,5 @@
 //
-// adapted from OverkillSolar BMS here: https://github.com/FurTrader/OverkillSolarBMS
+// adapted from OverkillSolar Bms here: https://github.com/FurTrader/OverkillSolarBMS
 //
 
 /* Copyright 2020 Neil Jansen (njansen1@gmail.com)
@@ -34,9 +34,9 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #ifdef ARDUINO
 
-#include <bms.h>
+#include <Bms.h>
 
-BMS::BMS() {
+Bms::Bms() {
     totalVoltage = 0;
     current = 0;
     balanceCapacity = 0;
@@ -62,9 +62,10 @@ BMS::BMS() {
     isEnabled = false;
     balanceStatus = 0;
     lastProtectionStatus = 0;
+    lastPollTime = 0;
 }
 
-void BMS::begin(Stream *port, uint16_t timeout) {
+void Bms::begin(Stream *port, uint16_t timeout) {
 #if BMS_OPTION_DEBUG
     Serial.println("OverkillSolarBMS Begin!");
 #endif
@@ -73,12 +74,13 @@ void BMS::begin(Stream *port, uint16_t timeout) {
     isEnabled = true;
 }
 
-void BMS::end() {
+void Bms::end() {
     isEnabled = false;
 }
 
-void BMS::poll() {
+void Bms::poll() {
     if (isEnabled) {
+        lastPollTime = time(nullptr);
         queryBasicInfo();
         minVoltage24 = totalVoltage < minVoltage24 ? totalVoltage : minVoltage24;
         maxVoltage24 = totalVoltage > maxVoltage24 ? totalVoltage : maxVoltage24;
@@ -91,11 +93,11 @@ void BMS::poll() {
     }
 }
 
-bool BMS::hasComError() const {
+bool Bms::hasComError() const {
     return comError;
 }
 
-bool BMS::isBalancing(uint8_t cellNumber) const {
+bool Bms::isBalancing(uint8_t cellNumber) const {
     if (cellNumber <= numCells) {
         return (balanceStatus >> cellNumber) & 1u;
     }
@@ -104,7 +106,7 @@ bool BMS::isBalancing(uint8_t cellNumber) const {
     }
 }
 
-void BMS::clearFaultCounts() {
+void Bms::clearFaultCounts() {
     faultCounts.singleCellOvervoltageProtection    = 0;
     faultCounts.singleCellUndervoltageProtection   = 0;
     faultCounts.wholePackOvervoltageProtection     = 0;
@@ -120,7 +122,7 @@ void BMS::clearFaultCounts() {
     faultCounts.softwareLockMos                    = 0;
 }
 
-void BMS::setMosfetControl(bool charge, bool discharge) {
+void Bms::setMosfetControl(bool charge, bool discharge) {
 #if BMS_OPTION_DEBUG
     Serial.println("Query 0xE1 MOSFET Control");
 #endif
@@ -135,7 +137,7 @@ void BMS::setMosfetControl(bool charge, bool discharge) {
     comError = validateResponse(buffer, CMD_CTL_MOSFET, 0);
 }
 
-void BMS::calculateMosfetCommandString(uint8_t * commandString, bool charge, bool discharge) {
+void Bms::calculateMosfetCommandString(uint8_t * commandString, bool charge, bool discharge) {
     uint8_t xxByte = 0b11;
     xxByte &= charge ? 0b10u : 0b11u;
     xxByte &= discharge ? 0b01u : 0b11u;
@@ -147,7 +149,7 @@ void BMS::calculateMosfetCommandString(uint8_t * commandString, bool charge, boo
 }
 
 #if BMS_OPTION_DEBUG
-void BMS::debug() {
+void Bms::debug() {
     Serial.println("==============================================");
     Serial.print("Voltage:           ");
     Serial.print(totalVoltage, 3);
@@ -239,13 +241,13 @@ void BMS::debug() {
         Serial.println(isBalancing(i) ? "(balancing)" : "(not balancing)");
     }
 
-    Serial.print("BMS Name:         ");
+    Serial.print("Bms Name:         ");
     Serial.println(name);
     Serial.println();
 }
 #endif
 
-void BMS::queryBasicInfo() {
+void Bms::queryBasicInfo() {
 #if BMS_OPTION_DEBUG
     Serial.println("Query 0x03 Basic Info");
 #endif
@@ -265,7 +267,7 @@ void BMS::queryBasicInfo() {
 
 }
 
-void BMS::parseBasicInfoResponse(const uint8_t *buffer) {
+void Bms::parseBasicInfoResponse(const uint8_t *buffer) {
     totalVoltage = 0.01f * ((uint16_t)(buffer[4] << 8u) | (uint16_t)(buffer[5]));
     current = ((uint16_t)(buffer[6] << 8u) | (uint16_t)(buffer[7])) * 0.01;
     balanceCapacity = ((uint16_t)(buffer[8] << 8u) | (uint16_t)(buffer[9])) * 0.01;
@@ -304,7 +306,7 @@ void BMS::parseBasicInfoResponse(const uint8_t *buffer) {
 }
 
 
-void BMS::queryCellVoltages() {
+void Bms::queryCellVoltages() {
 #if BMS_OPTION_DEBUG
     Serial.println("Query 0x04 Cell Voltages");
 #endif
@@ -323,15 +325,15 @@ void BMS::queryCellVoltages() {
     parseVoltagesResponse(buffer);
 }
 
-void BMS::parseVoltagesResponse(const uint8_t *buffer) {
+void Bms::parseVoltagesResponse(const uint8_t *buffer) {
     for (int i = 0; i < min(numCells, NUM_CELLS); i++) {
         cellVoltages[i] = ((uint16_t)(buffer[i * 2 + 4] << 8u) | (uint16_t)(buffer[i * 2 + 5])) * 0.001f;
     }
 }
 
-void BMS::queryBmsName() {
+void Bms::queryBmsName() {
 #if BMS_OPTION_DEBUG
-    Serial.println("Query 0x05 BMS Name");
+    Serial.println("Query 0x05 Bms Name");
 #endif
     if(serial->availableForWrite()){
         serial->write(nameCommand, sizeof(nameCommand));
@@ -347,14 +349,14 @@ void BMS::queryBmsName() {
     parseNameResponse(buffer);
 }
 
-void BMS::parseNameResponse(const uint8_t *buffer) {
+void Bms::parseNameResponse(const uint8_t *buffer) {
     name = String();
     for(int i = 4; i < buffer[3] + 4; i++){
         name.concat((char)buffer[i]);
     }
 }
 
-uint16_t BMS::calculateChecksum(uint8_t *buffer, int len) {
+uint16_t Bms::calculateChecksum(uint8_t *buffer, int len) {
     uint16_t checksum =0;
     for(int i = 0; i < len; i++){
         checksum += buffer[i];
@@ -362,7 +364,7 @@ uint16_t BMS::calculateChecksum(uint8_t *buffer, int len) {
     return 0xFFFF - checksum + 1;
 }
 
-bool BMS::validateResponse(uint8_t *buffer, uint8_t command, int bytesReceived) {
+bool Bms::validateResponse(uint8_t *buffer, uint8_t command, int bytesReceived) {
     if(bytesReceived <= 0) {
         return false;
     }
@@ -379,11 +381,86 @@ bool BMS::validateResponse(uint8_t *buffer, uint8_t command, int bytesReceived) 
     return true;
 }
 
-void BMS::clear24Values() {
+void Bms::clear24Values() {
     minVoltage24 = totalVoltage;
     maxVoltage24 = totalVoltage;
     maxCharge24 = current > 0 ? current : 0;
     maxDischarge24 = current < -maxDischarge24 ? -current : 0;
 }
+
+void Bms::printFaults(Client &client) {
+    client.println(R"===("faults": [)===");
+    char buffer[64] = {0};
+    sprintf(buffer,R"===({"fault": "Single Cell Over-Voltage", "count": %d},)===", faultCounts.singleCellOvervoltageProtection);
+    client.println(buffer);
+    sprintf(buffer,R"===({"fault": "Single Cell Under-Voltage", "count": %d},)===", faultCounts.singleCellUndervoltageProtection);
+    client.println(buffer);
+    sprintf(buffer,R"===({"fault": "Whole Pack Over-Voltage", "count": %d},)===", faultCounts.wholePackOvervoltageProtection);
+    client.println(buffer);
+    sprintf(buffer,R"===({"fault": "Whole Pack Under-Voltage", "count": %d},)===", faultCounts.wholePackUndervoltageProtection);
+    client.println(buffer);
+    sprintf(buffer,R"===({"fault": "Charging Over Temperature", "count": %d},)===", faultCounts.chargingOverTemperatureProtection);
+    client.println(buffer);
+    sprintf(buffer,R"===({"fault": "Charging Low Temperature", "count": %d},)===", faultCounts.chargingLowTemperatureProtection);
+    client.println(buffer);
+    sprintf(buffer,R"===({"fault": "Discharge Over Temperature", "count": %d},)===", faultCounts.dischargeOverTemperatureProtection);
+    client.println(buffer);
+    sprintf(buffer,R"===({"fault": "Discharge Low Temperature", "count": %d},)===", faultCounts.dischargeLowTemperatureProtection);
+    client.println(buffer);
+    sprintf(buffer,R"===({"fault": "Charging Over-Current", "count": %d},)===", faultCounts.chargingOvercurrentProtection);
+    client.println(buffer);
+    sprintf(buffer,R"===({"fault": "Discharge Over-Current", "count": %d},)===", faultCounts.dischargeOvercurrentProtection);
+    client.println(buffer);
+    sprintf(buffer,R"===({"fault": "Short Circuit", "count": %d},)===", faultCounts.shortCircuitProtection);
+    client.println(buffer);
+    sprintf(buffer,R"===({"fault": "Front End Detection Ic Error", "count": %d},)===", faultCounts.frontEndDetectionIcError);
+    client.println(buffer);
+    sprintf(buffer,R"===({"fault": "Software Lock Mos", "count": %d})===", faultCounts.softwareLockMos);
+    client.println(buffer);
+    client.println(R"===(],)===");
+}
+
+void Bms::printCellVoltages(Client &client) {
+    client.println(R"===({ "cellVoltages":[)===");
+    for(int i = 0; i < NUM_CELLS; i++){
+        char buffer[64] = {0};
+        sprintf(buffer, R"===({"cell":"%d", "cellVoltage":%.3f, "balancing": %s})===", i, cellVoltages[i], isBalancing(i) ? "true" : "false");
+        client.print(buffer);
+        if(i != NUM_CELLS - 1) {
+            client.println(",");
+        } else {
+            client.println();
+        }
+    }
+    client.println(R"===(],)===");
+}
+
+void Bms::printStates(Client &client) {
+    char buffer[64] = {0};
+    sprintf(buffer, R"===("charge": "%.2fA",)===", current < 0 ? 0 : current);
+    client.println(buffer);
+    sprintf(buffer, R"===("discharge": "%.2fA",)===", current < 0 ? -current : 0);
+    client.println(buffer);
+    sprintf(buffer, R"===("totalVoltage": "%.2fV",)===", totalVoltage);
+    client.println(buffer);
+    sprintf(buffer, R"===("remainingSOC": %d,)===", stateOfCharge);
+    client.println(buffer);
+    sprintf(buffer, R"===("minVoltage": "%.2fV",)===", minVoltage24);
+    client.println(buffer);
+    sprintf(buffer, R"===("maxVoltage": "%.2fV",)===", maxVoltage24);
+    client.println(buffer);
+    sprintf(buffer, R"===("maxCharge": "%.2fA",)===", maxCharge24);
+    client.println(buffer);
+    sprintf(buffer, R"===("maxDischarge": "%.2fA",)===", maxDischarge24);
+    client.println(buffer);
+    sprintf(buffer, R"===("maxPower": "%.2fW",)===", balanceCapacity);
+    client.println(buffer);
+    sprintf(buffer, R"===("temp1": "%.2fC",)===", temperatures[0]);
+    client.println(buffer);
+    sprintf(buffer, R"===("temp2": "%.2fC")===", temperatures[1]);
+    client.println(buffer);
+    client.println("}");
+}
+
 
 #endif

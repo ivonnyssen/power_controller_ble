@@ -1,5 +1,5 @@
 //
-// adapted from OverkillSolar BMS here: https://github.com/FurTrader/OverkillSolarBMS
+// adapted from OverkillSolar Bms here: https://github.com/FurTrader/OverkillSolarBMS
 //
 
 /* Copyright 2020 Neil Jansen (njansen1@gmail.com)
@@ -180,13 +180,13 @@ typedef struct FaultCounts {
 } FaultCounts;
 
 
-class BMS {
+class Bms {
 public:
-    BMS();
+    Bms();
 
-    void begin(Stream *port, uint16_t timeout = 2000); // serial port stream and timeout
-    void poll(); // Call this every time you want to poll the BMS
-    void end();    // End processing.  Call this to stop querying the BMS and processing data.
+    void begin(Stream *port, uint16_t timeout = 500); // serial port stream and timeout
+    void poll(); // Call this every time you want to poll the Bms
+    void end();    // End processing.  Call this to stop querying the Bms and processing data.
     bool hasComError() const;  // Returns true if there was a timeout or checksum error on the last call
 
     float totalVoltage;
@@ -210,6 +210,7 @@ public:
     float maxVoltage24;
     float maxCharge24;
     float maxDischarge24;
+    time_t lastPollTime;
 
     void clear24Values();
     void clearFaultCounts();
@@ -227,13 +228,18 @@ public:
     void parseVoltagesResponse(const uint8_t *buffer);
     void parseNameResponse(const uint8_t *buffer);
 
-#ifdef BMS_OPTION_DEBUG
+    void printFaults(Client &client);
+    void printCellVoltages(Client &client);
+    void printStates(Client &client);
+
+
+#if BMS_OPTION_DEBUG
     void debug();  // Calling this method will print out the received data to the main serial port
 #endif
 
 private:
     bool isEnabled;
-    Stream* serial{};
+    Stream* serial;
     bool comError;
     uint32_t balanceStatus;  // The cell balance statuses, stored as a bitfield
     ProtectionStatus lastProtectionStatus;
