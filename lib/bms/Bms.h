@@ -38,8 +38,9 @@ POSSIBILITY OF SUCH DAMAGE.
 #ifdef ARDUINO
 
 #include <Arduino.h>
+#include "ProtectionStatus.h"
 
-#define BMS_OPTION_DEBUG false
+#define BMS_OPTION_DEBUG true
 
 #define NUM_TEMP_SENSORS 2
 #define NUM_CELLS 8
@@ -58,23 +59,25 @@ POSSIBILITY OF SUCH DAMAGE.
 #define CMD_CTL_MOSFET        0xE1
 
 
-typedef struct SoftwareVersion {
+class SoftwareVersion {
+public:
     uint8_t major;
     uint8_t minor;
 
-    SoftwareVersion(){
+    SoftwareVersion() {
         major = 0;
         minor = 0;
     }
 
-    SoftwareVersion(uint8_t version){
+    explicit SoftwareVersion(const uint8_t version) {
         major = version / 0x0Fu & 0b1111u;
         minor = version & 0b1111u;
     }
 
-} SoftwareVersion;
+};
 
-typedef struct ProductionDate {
+class ProductionDate {
+public:
     uint16_t year;
     uint8_t month;
     uint8_t day;
@@ -85,7 +88,7 @@ typedef struct ProductionDate {
         year = 2000;
     }
 
-    ProductionDate(uint16_t date) {
+    explicit ProductionDate(const uint16_t date) {
         // Production date is stored internally as a uint16_t, bit-packed as follows:
         //         1111110000000000
         // Field   5432109876543210  # bits  offset
@@ -94,99 +97,17 @@ typedef struct ProductionDate {
         // Month:         xxxx       4       5
         // Year:   xxxxxxx           7       9
         day = date & 0x1fu;
-        month = (date >> 5u) & 0x0fu;
+        month = (uint8_t)(date >> 0x05u) & 0x0fu;
         year = 2000u + (date >> 9u);
     }
-} ProductionDate;
-
-typedef struct ProtectionStatus {
-    bool singleCellOvervoltageProtection;
-    bool singleCellUndervoltageProtection;
-    bool wholePackOvervoltageProtection;
-    bool wholePackUndervoltageProtection;
-    bool chargingOverTemperatureProtection;
-    bool chargingLowTemperatureProtection;
-    bool dischargeOverTemperatureProtection;
-    bool dischargeLowTemperatureProtection;
-    bool chargingOvercurrentProtection;
-    bool dischargeOvercurrentProtection;
-    bool shortCircuitProtection;
-    bool frontEndDetectionIcError;
-    bool softwareLockMos;
-
-    ProtectionStatus(){
-        singleCellOvervoltageProtection    = false;
-        singleCellUndervoltageProtection   = false;
-        wholePackOvervoltageProtection     = false;
-        wholePackUndervoltageProtection    = false;
-        chargingOverTemperatureProtection  = false;
-        chargingLowTemperatureProtection   = false;
-        dischargeOverTemperatureProtection = false;
-        dischargeLowTemperatureProtection  = false;
-        chargingOvercurrentProtection      = false;
-        dischargeOvercurrentProtection     = false;
-        shortCircuitProtection             = false;
-        frontEndDetectionIcError           = false;
-        softwareLockMos                    = false;
-    }
-
-    ProtectionStatus(uint16_t status) {
-        singleCellOvervoltageProtection    = status & 0b0000000000000001u;
-        singleCellUndervoltageProtection   = status & 0b0000000000000010u;
-        wholePackOvervoltageProtection     = status & 0b0000000000000100u;
-        wholePackUndervoltageProtection    = status & 0b0000000000001000u;
-        chargingOverTemperatureProtection  = status & 0b0000000000010000u;
-        chargingLowTemperatureProtection   = status & 0b0000000000100000u;
-        dischargeOverTemperatureProtection = status & 0b0000000001000000u;
-        dischargeLowTemperatureProtection  = status & 0b0000000010000000u;
-        chargingOvercurrentProtection      = status & 0b0000000100000000u;
-        dischargeOvercurrentProtection     = status & 0b0000001000000000u;
-        shortCircuitProtection             = status & 0b0000010000000000u;
-        frontEndDetectionIcError           = status & 0b0000100000000000u;
-        softwareLockMos                    = status & 0b0001000000000000u;
-    }
-} ProtectionStatus;
-
-typedef struct FaultCounts {
-    uint8_t singleCellOvervoltageProtection;
-    uint8_t singleCellUndervoltageProtection;
-    uint8_t wholePackOvervoltageProtection;
-    uint8_t wholePackUndervoltageProtection;
-    uint8_t chargingOverTemperatureProtection;
-    uint8_t chargingLowTemperatureProtection;
-    uint8_t dischargeOverTemperatureProtection;
-    uint8_t dischargeLowTemperatureProtection;
-    uint8_t chargingOvercurrentProtection;
-    uint8_t dischargeOvercurrentProtection;
-    uint8_t shortCircuitProtection;
-    uint8_t frontEndDetectionIcError;
-    uint8_t softwareLockMos;
-
-    FaultCounts(){
-        singleCellOvervoltageProtection = 0;
-        singleCellUndervoltageProtection = 0;
-        wholePackOvervoltageProtection = 0;
-        wholePackUndervoltageProtection = 0;
-        chargingOverTemperatureProtection = 0;
-        chargingLowTemperatureProtection = 0;
-        dischargeOverTemperatureProtection = 0;
-        dischargeLowTemperatureProtection = 0;
-        chargingOvercurrentProtection = 0;
-        dischargeOvercurrentProtection = 0;
-        shortCircuitProtection = 0;
-        frontEndDetectionIcError = 0;
-        softwareLockMos = 0;
-    }
-} FaultCounts;
-
+};
 
 class Bms {
 public:
     Bms();
 
-    void begin(Stream *port, uint16_t timeout = 500); // serial port stream and timeout
+    void begin(Stream *port, uint16_t timeout = 1000); // serial port stream and timeout
     void poll(); // Call this every time you want to poll the Bms
-    void end();    // End processing.  Call this to stop querying the Bms and processing data.
     bool hasComError() const;  // Returns true if there was a timeout or checksum error on the last call
 
     float totalVoltage;
@@ -205,7 +126,6 @@ public:
     float temperatures[NUM_TEMP_SENSORS]{};
     float cellVoltages[NUM_CELLS]{};
     String name;
-    FaultCounts faultCounts;
     float minVoltage24;
     float maxVoltage24;
     float maxCharge24;
@@ -217,28 +137,30 @@ public:
     bool isBalancing(uint8_t cellNumber) const;
     void setMosfetControl(bool charge, bool discharge);
 
-    static uint16_t calculateChecksum(uint8_t* buffer, int len);
-    void calculateMosfetCommandString(uint8_t *commandString, bool charge, bool discharge);
+    void printFaults(Stream *client) const;
+    void printCellVoltages(Stream *client);
+    void printStates(Stream *client);
+
+#ifndef UNIT_TEST
+private:
+#endif
+    static uint16_t calculateChecksum(const uint8_t* buffer, int len);
+    static void calculateMosfetCommandString(uint8_t *commandString, bool charge, bool discharge);
     uint8_t basicSystemInfoCommand[7] = {START_BYTE, READ, CMD_BASIC_SYSTEM_INFO, 0x00, 0xFF, 0xFD, STOP_BYTE};
     uint8_t  cellVoltagesCommand[7] = {START_BYTE, READ, CMD_CELL_VOLTAGES, 0x00, 0xFF, 0xFC, STOP_BYTE};
     uint8_t  nameCommand[7] = {START_BYTE, READ, CMD_NAME, 0x00, 0xFF, 0xFB, STOP_BYTE};
 
-    bool validateResponse(uint8_t *buffer, uint8_t command, int bytesReceived);
+    static bool validateResponse(uint8_t *buffer, uint8_t command, int bytesReceived);
     void parseBasicInfoResponse(const uint8_t *buffer);
     void parseVoltagesResponse(const uint8_t *buffer);
     void parseNameResponse(const uint8_t *buffer);
 
-    void printFaults(Client &client);
-    void printCellVoltages(Client &client);
-    void printStates(Client &client);
-
-
 #if BMS_OPTION_DEBUG
     void debug();  // Calling this method will print out the received data to the main serial port
 #endif
-
+#ifdef UNIT_TEST
 private:
-    bool isEnabled;
+#endif
     Stream* serial;
     bool comError;
     uint32_t balanceStatus;  // The cell balance statuses, stored as a bitfield
@@ -246,7 +168,6 @@ private:
     void queryBasicInfo();
     void queryCellVoltages();
     void queryBmsName();
-
 };
 
 #endif

@@ -1,12 +1,12 @@
 #include "Sensors.h"
 #include <SD.h>
-void Sensors::measureAndLog(time_t &now) {
+void Sensors::measureAndLog() {
     for(int i = 0; i < numSensorRecords - 1; i++){
         sensorData[i] = sensorData[i + 1];
     }
     bme.takeForcedMeasurement();
     lastLogTime = time(nullptr);
-    sensorData[numSensorRecords - 1] = {now, bme.readPressure() / 100.0F, bme.readTemperature(), bme.readHumidity()};
+    sensorData[numSensorRecords - 1] = {lastLogTime, bme.readPressure() / 100.0F, bme.readTemperature(), bme.readHumidity()};
 
     char buffer[64] = {0};
     struct tm* logTime = localtime(&sensorData[numSensorRecords - 1].readoutTime);
@@ -26,22 +26,22 @@ void Sensors::measureAndLog(time_t &now) {
 #endif
 }
 
-void Sensors::printJson(Client &client) {
-    client.println(R"===({ "values":[)===");
+void Sensors::printJson(Stream *client) {
+    client->println(R"===({ "values":[)===");
     for(int i = 0; i < numSensorRecords; i++){
         char buffer[128] = {0};
         struct tm* logTime = localtime(&sensorData[i].readoutTime);
         sprintf(buffer, R"===({"time":"%02d-%02d %02d:%02d", "pressure":%.2f, "temp":%.2f, "humidity":%.2f})===",
                 logTime->tm_mon + 1, logTime->tm_mday, logTime->tm_hour, logTime->tm_min, sensorData[i].pressure,
                 sensorData[i].temperature, sensorData[i].humidity);
-        client.print(buffer);
+        client->print(buffer);
         if(i != numSensorRecords - 1) {
-            client.println(",");
+            client->println(",");
         } else {
-            client.println();
+            client->println();
         }
     }
-    client.println("]}");
+    client->println("]}");
 }
 
 bool Sensors::begin() {

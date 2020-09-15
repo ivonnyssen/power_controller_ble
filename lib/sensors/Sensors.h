@@ -18,13 +18,13 @@ class Sensors {
 public:
     Sensors();
     bool begin();
-    void measureAndLog(time_t &now);
-    void printJson(Client &client);
+    void measureAndLog();
+    void printJson(Stream *client);
     time_t lastLogTime;
 private:
     Adafruit_BME280 bme;
     static const int numSensorRecords = 24 * 4;
-    SensorData sensorData[numSensorRecords] = {{0}};
+    SensorData sensorData[numSensorRecords]{};
 };
 
 #endif //POWER_CONTROLLER_BLE_SENSORS_H

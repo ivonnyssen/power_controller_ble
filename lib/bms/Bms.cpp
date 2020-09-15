@@ -42,27 +42,24 @@ Bms::Bms() {
     balanceCapacity = 0;
     rateCapacity = 0;
     cycleCount = 0;
-    productionDate = 0;
-    protectionStatus = 0;
-    softwareVersion = 0;
+    productionDate = ProductionDate(0);
+    protectionStatus = ProtectionStatus(0);
+    softwareVersion = SoftwareVersion(0);
     stateOfCharge = 0;  // state of charge, in percent (0-100)
     isDischargeFetEnabled = false;
     isChargeFetEnabled = false;
     numCells = 0;
     numTemperatureSensors = 0;
-    for (uint8_t i = 0; i < NUM_TEMP_SENSORS; i++) {
-        temperatures[i] = 0;
-    }
-    for (uint8_t i = 0; i < NUM_CELLS; i++) {
-        cellVoltages[i] = 0;
-    }
     name = String("");
 
     comError = false;
-    isEnabled = false;
     balanceStatus = 0;
-    lastProtectionStatus = 0;
     lastPollTime = 0;
+    minVoltage24 = 0;
+    maxVoltage24 = 0;
+    maxCharge24 = 0;
+    maxDischarge24 = 0;
+    serial = nullptr;
 }
 
 void Bms::begin(Stream *port, uint16_t timeout) {
@@ -71,15 +68,10 @@ void Bms::begin(Stream *port, uint16_t timeout) {
 #endif
     serial = port;
     serial->setTimeout(timeout);
-    isEnabled = true;
-}
-
-void Bms::end() {
-    isEnabled = false;
 }
 
 void Bms::poll() {
-    if (isEnabled) {
+    if (serial != nullptr) {
         lastPollTime = time(nullptr);
         queryBasicInfo();
         minVoltage24 = totalVoltage < minVoltage24 ? totalVoltage : minVoltage24;
@@ -107,19 +99,7 @@ bool Bms::isBalancing(uint8_t cellNumber) const {
 }
 
 void Bms::clearFaultCounts() {
-    faultCounts.singleCellOvervoltageProtection    = 0;
-    faultCounts.singleCellUndervoltageProtection   = 0;
-    faultCounts.wholePackOvervoltageProtection     = 0;
-    faultCounts.wholePackUndervoltageProtection    = 0;
-    faultCounts.chargingOverTemperatureProtection  = 0;
-    faultCounts.chargingLowTemperatureProtection   = 0;
-    faultCounts.dischargeOverTemperatureProtection = 0;
-    faultCounts.dischargeLowTemperatureProtection  = 0;
-    faultCounts.chargingOvercurrentProtection      = 0;
-    faultCounts.dischargeOvercurrentProtection     = 0;
-    faultCounts.shortCircuitProtection             = 0;
-    faultCounts.frontEndDetectionIcError           = 0;
-    faultCounts.softwareLockMos                    = 0;
+    protectionStatus.clearFaultCounts();
 }
 
 void Bms::setMosfetControl(bool charge, bool discharge) {
@@ -178,32 +158,7 @@ void Bms::debug() {
     Serial.println(productionDate.year, DEC);
 
     Serial.println("Protection Status: ");
-    Serial.print("  softwareLockMos:                    ");
-    Serial.println(protectionStatus.softwareLockMos, DEC);
-    Serial.print("  frontEndDetectionIcError:         ");
-    Serial.println(protectionStatus.frontEndDetectionIcError, DEC);
-    Serial.print("  shortCircuitProtection:             ");
-    Serial.println(protectionStatus.shortCircuitProtection, DEC);
-    Serial.print("  dischargeOvercurrentProtection:     ");
-    Serial.println(protectionStatus.dischargeOvercurrentProtection, DEC);
-    Serial.print("  chargingOvercurrentProtection:      ");
-    Serial.println(protectionStatus.chargingOvercurrentProtection, DEC);
-    Serial.print("  dischargeLowTemperatureProtection: ");
-    Serial.println(protectionStatus.dischargeLowTemperatureProtection, DEC);
-    Serial.print("  dischargeOverTemperatureProtection:");
-    Serial.println(protectionStatus.dischargeOverTemperatureProtection, DEC);
-    Serial.print("  chargingLowTemperatureProtection:  ");
-    Serial.println(protectionStatus.chargingLowTemperatureProtection, DEC);
-    Serial.print("  chargingOverTemperatureProtection: ");
-    Serial.println(protectionStatus.chargingOverTemperatureProtection, DEC);
-    Serial.print("  wholePackUndervoltageProtection:   ");
-    Serial.println(protectionStatus.wholePackUndervoltageProtection, DEC);
-    Serial.print("  wholePackOvervoltageProtection:    ");
-    Serial.println(protectionStatus.wholePackOvervoltageProtection, DEC);
-    Serial.print("  singleCellUndervoltageProtection:  ");
-    Serial.println(protectionStatus.singleCellUndervoltageProtection, DEC);
-    Serial.print("  singleCellOvervoltageProtection:   ");
-    Serial.println(protectionStatus.singleCellOvervoltageProtection, DEC);
+    protectionStatus.printFaultCounts(&Serial);
 
     Serial.print("Software version:  ");
     Serial.print(softwareVersion.major, DEC);
@@ -262,38 +217,19 @@ void Bms::queryBasicInfo() {
     if(comError){
         return;
     }
-
     parseBasicInfoResponse(buffer);
-
 }
 
 void Bms::parseBasicInfoResponse(const uint8_t *buffer) {
-    totalVoltage = 0.01f * ((uint16_t)(buffer[4] << 8u) | (uint16_t)(buffer[5]));
-    current = ((uint16_t)(buffer[6] << 8u) | (uint16_t)(buffer[7])) * 0.01;
-    balanceCapacity = ((uint16_t)(buffer[8] << 8u) | (uint16_t)(buffer[9])) * 0.01;
-    rateCapacity = ((uint16_t)(buffer[10] << 8u) | (uint16_t)(buffer[11])) * 0.01;
+    totalVoltage = 0.01f * (float)((uint16_t)(buffer[4] << 8u) | (uint16_t)(buffer[5]));
+    current =  0.01f * (float) ((uint16_t)(buffer[6] << 8u) | (uint16_t)(buffer[7]));
+    balanceCapacity = 0.01f * (float) ((uint16_t)(buffer[8] << 8u) | (uint16_t)(buffer[9]));
+    rateCapacity = 0.01f * (float) ((uint16_t)(buffer[10] << 8u) | (uint16_t)(buffer[11]));
     cycleCount = (uint16_t)(buffer[12] << 8u) | (uint16_t)(buffer[13]);
-    productionDate = (uint16_t)(buffer[14] << 8u) | (uint16_t)(buffer[15]);
+    productionDate = ProductionDate((uint16_t)(buffer[14] << 8u) | (uint16_t)(buffer[15]));
     balanceStatus = (uint32_t)(buffer[16] << 8u) | (uint32_t)(buffer[17]) | (uint32_t)(buffer[18] << 24u) | (uint32_t)(buffer[19] << 16u) ;
-    lastProtectionStatus = protectionStatus;
-    protectionStatus = (uint16_t)(buffer[20] << 8u) | (uint16_t)(buffer[21]);
-
-    // See if there are any new faults.  If so, then increment the count.
-    if (!lastProtectionStatus.singleCellOvervoltageProtection && protectionStatus.singleCellOvervoltageProtection)  { faultCounts.singleCellOvervoltageProtection += 1; }
-    if (!lastProtectionStatus.singleCellUndervoltageProtection && protectionStatus.singleCellUndervoltageProtection)  { faultCounts.singleCellUndervoltageProtection += 1; }
-    if (!lastProtectionStatus.wholePackOvervoltageProtection && protectionStatus.wholePackOvervoltageProtection)  { faultCounts.wholePackOvervoltageProtection += 1; }
-    if (!lastProtectionStatus.wholePackUndervoltageProtection && protectionStatus.wholePackUndervoltageProtection)  { faultCounts.wholePackUndervoltageProtection += 1; }
-    if (!lastProtectionStatus.chargingOverTemperatureProtection && protectionStatus.chargingOverTemperatureProtection)  { faultCounts.chargingOverTemperatureProtection += 1; }
-    if (!lastProtectionStatus.chargingLowTemperatureProtection && protectionStatus.chargingLowTemperatureProtection)  { faultCounts.chargingLowTemperatureProtection += 1; }
-    if (!lastProtectionStatus.dischargeOverTemperatureProtection && protectionStatus.dischargeOverTemperatureProtection)  { faultCounts.dischargeOverTemperatureProtection += 1; }
-    if (!lastProtectionStatus.dischargeLowTemperatureProtection && protectionStatus.dischargeLowTemperatureProtection)  { faultCounts.dischargeLowTemperatureProtection += 1; }
-    if (!lastProtectionStatus.chargingOvercurrentProtection && protectionStatus.chargingOvercurrentProtection)  { faultCounts.chargingOvercurrentProtection += 1; }
-    if (!lastProtectionStatus.dischargeOvercurrentProtection && protectionStatus.dischargeOvercurrentProtection)  { faultCounts.dischargeOvercurrentProtection += 1; }
-    if (!lastProtectionStatus.shortCircuitProtection && protectionStatus.shortCircuitProtection) { faultCounts.shortCircuitProtection += 1; }
-    if (!lastProtectionStatus.frontEndDetectionIcError && protectionStatus.frontEndDetectionIcError) { faultCounts.frontEndDetectionIcError += 1; }
-    if (!lastProtectionStatus.softwareLockMos && protectionStatus.softwareLockMos) { faultCounts.softwareLockMos += 1; }
-
-    softwareVersion = buffer[22];
+    protectionStatus.updateProtectionStatus((uint16_t)(buffer[20] << 8u) | (uint16_t)(buffer[21]));
+    softwareVersion = SoftwareVersion(buffer[22]);
     stateOfCharge = buffer[23];
     isDischargeFetEnabled = buffer[24] & 0b00000010u;
     isChargeFetEnabled = buffer[24] & 0b00000001u;
@@ -301,7 +237,7 @@ void Bms::parseBasicInfoResponse(const uint8_t *buffer) {
     numTemperatureSensors = buffer[26];
 
     for (int i = 0; i < min(numTemperatureSensors, NUM_TEMP_SENSORS); i++) {
-        temperatures[i] = ((uint16_t)(buffer[27 + (i * 2)] << 8u) | (uint16_t)(buffer[28 + (i * 2)])) * 0.1f - 273.15f;
+        temperatures[i] = 0.1f * (float) ((uint16_t)(buffer[27 + (i * 2)] << 8u) | (uint16_t)(buffer[28 + (i * 2)])) - 273.15f;
     }
 }
 
@@ -327,7 +263,7 @@ void Bms::queryCellVoltages() {
 
 void Bms::parseVoltagesResponse(const uint8_t *buffer) {
     for (int i = 0; i < min(numCells, NUM_CELLS); i++) {
-        cellVoltages[i] = ((uint16_t)(buffer[i * 2 + 4] << 8u) | (uint16_t)(buffer[i * 2 + 5])) * 0.001f;
+        cellVoltages[i] = 0.001f * (float) ((uint16_t)(buffer[i * 2 + 4] << 8u) | (uint16_t)(buffer[i * 2 + 5]));
     }
 }
 
@@ -356,7 +292,7 @@ void Bms::parseNameResponse(const uint8_t *buffer) {
     }
 }
 
-uint16_t Bms::calculateChecksum(uint8_t *buffer, int len) {
+uint16_t Bms::calculateChecksum(const uint8_t *buffer, int len) {
     uint16_t checksum =0;
     for(int i = 0; i < len; i++){
         checksum += buffer[i];
@@ -388,79 +324,50 @@ void Bms::clear24Values() {
     maxDischarge24 = current < -maxDischarge24 ? -current : 0;
 }
 
-void Bms::printFaults(Client &client) {
-    client.println(R"===("faults": [)===");
-    char buffer[64] = {0};
-    sprintf(buffer,R"===({"fault": "Single Cell Over-Voltage", "count": %d},)===", faultCounts.singleCellOvervoltageProtection);
-    client.println(buffer);
-    sprintf(buffer,R"===({"fault": "Single Cell Under-Voltage", "count": %d},)===", faultCounts.singleCellUndervoltageProtection);
-    client.println(buffer);
-    sprintf(buffer,R"===({"fault": "Whole Pack Over-Voltage", "count": %d},)===", faultCounts.wholePackOvervoltageProtection);
-    client.println(buffer);
-    sprintf(buffer,R"===({"fault": "Whole Pack Under-Voltage", "count": %d},)===", faultCounts.wholePackUndervoltageProtection);
-    client.println(buffer);
-    sprintf(buffer,R"===({"fault": "Charging Over Temperature", "count": %d},)===", faultCounts.chargingOverTemperatureProtection);
-    client.println(buffer);
-    sprintf(buffer,R"===({"fault": "Charging Low Temperature", "count": %d},)===", faultCounts.chargingLowTemperatureProtection);
-    client.println(buffer);
-    sprintf(buffer,R"===({"fault": "Discharge Over Temperature", "count": %d},)===", faultCounts.dischargeOverTemperatureProtection);
-    client.println(buffer);
-    sprintf(buffer,R"===({"fault": "Discharge Low Temperature", "count": %d},)===", faultCounts.dischargeLowTemperatureProtection);
-    client.println(buffer);
-    sprintf(buffer,R"===({"fault": "Charging Over-Current", "count": %d},)===", faultCounts.chargingOvercurrentProtection);
-    client.println(buffer);
-    sprintf(buffer,R"===({"fault": "Discharge Over-Current", "count": %d},)===", faultCounts.dischargeOvercurrentProtection);
-    client.println(buffer);
-    sprintf(buffer,R"===({"fault": "Short Circuit", "count": %d},)===", faultCounts.shortCircuitProtection);
-    client.println(buffer);
-    sprintf(buffer,R"===({"fault": "Front End Detection Ic Error", "count": %d},)===", faultCounts.frontEndDetectionIcError);
-    client.println(buffer);
-    sprintf(buffer,R"===({"fault": "Software Lock Mos", "count": %d})===", faultCounts.softwareLockMos);
-    client.println(buffer);
-    client.println(R"===(],)===");
+void Bms::printFaults(Stream *client) const {
+    protectionStatus.printFaultCounts(client);
 }
 
-void Bms::printCellVoltages(Client &client) {
-    client.println(R"===({ "cellVoltages":[)===");
+void Bms::printCellVoltages(Stream *client) {
+    client->println(R"===({ "cellVoltages":[)===");
     for(int i = 0; i < NUM_CELLS; i++){
         char buffer[64] = {0};
         sprintf(buffer, R"===({"cell":"%d", "cellVoltage":%.3f, "balancing": %s})===", i, cellVoltages[i], isBalancing(i) ? "true" : "false");
-        client.print(buffer);
+        client->print(buffer);
         if(i != NUM_CELLS - 1) {
-            client.println(",");
+            client->println(",");
         } else {
-            client.println();
+            client->println();
         }
     }
-    client.println(R"===(],)===");
+    client->println(R"===(],)===");
 }
 
-void Bms::printStates(Client &client) {
+void Bms::printStates(Stream *client) {
     char buffer[64] = {0};
     sprintf(buffer, R"===("charge": "%.2fA",)===", current < 0 ? 0 : current);
-    client.println(buffer);
+    client->println(buffer);
     sprintf(buffer, R"===("discharge": "%.2fA",)===", current < 0 ? -current : 0);
-    client.println(buffer);
+    client->println(buffer);
     sprintf(buffer, R"===("totalVoltage": "%.2fV",)===", totalVoltage);
-    client.println(buffer);
+    client->println(buffer);
     sprintf(buffer, R"===("remainingSOC": %d,)===", stateOfCharge);
-    client.println(buffer);
+    client->println(buffer);
     sprintf(buffer, R"===("minVoltage": "%.2fV",)===", minVoltage24);
-    client.println(buffer);
+    client->println(buffer);
     sprintf(buffer, R"===("maxVoltage": "%.2fV",)===", maxVoltage24);
-    client.println(buffer);
+    client->println(buffer);
     sprintf(buffer, R"===("maxCharge": "%.2fA",)===", maxCharge24);
-    client.println(buffer);
+    client->println(buffer);
     sprintf(buffer, R"===("maxDischarge": "%.2fA",)===", maxDischarge24);
-    client.println(buffer);
+    client->println(buffer);
     sprintf(buffer, R"===("maxPower": "%.2fW",)===", balanceCapacity);
-    client.println(buffer);
+    client->println(buffer);
     sprintf(buffer, R"===("temp1": "%.2fC",)===", temperatures[0]);
-    client.println(buffer);
+    client->println(buffer);
     sprintf(buffer, R"===("temp2": "%.2fC")===", temperatures[1]);
-    client.println(buffer);
-    client.println("}");
+    client->println(buffer);
+    client->println("}");
 }
-
 
 #endif

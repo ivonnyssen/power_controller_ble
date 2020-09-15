@@ -15,18 +15,18 @@ uint8_t Relay::getPinForPort(uint8_t port){
     }
 }
 
-void Relay::printJSON(Client &client) const {
-    client.println(R"===({ "switches": [)===");
+void Relay::printJSON(Stream *client) const {
+    client->println(R"===({ "switches": [)===");
     char buffer[64] = {0};
     sprintf(buffer,R"===({"name": "Imaging Computer 1", "state": %s},)===", ports[0] ? "true" : "false");
-    client.println(buffer);
+    client->println(buffer);
     sprintf(buffer,R"===({"name": "Imaging Computer 2", "state": %s},)===", ports[1] ? "true" : "false");
-    client.println(buffer);
+    client->println(buffer);
     sprintf(buffer,R"===({"name": "Port 3", "state": %s},)===", ports[2] ? "true" : "false");
-    client.println(buffer);
+    client->println(buffer);
     sprintf(buffer,R"===({"name": "Port 4", "state": %s})===", ports[3] ? "true" : "false");
-    client.println(buffer);
-    client.println(R"===(]})===");
+    client->println(buffer);
+    client->println(R"===(]})===");
 }
 
 void Relay::begin() {
