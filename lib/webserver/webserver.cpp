@@ -45,21 +45,22 @@ void WebServer::handleHttpRequest() {
 Request WebServer::parseRequest(Stream *client) {
     Request result;
 
-    char s[265] {0};
+    char s[1024] {0};
     client->readBytesUntil('\n', &s[0], sizeof(s));
 #if DEBUG_WEB_SERVER
     if(Serial) Serial.println(s);
 #endif
-    if(strncmp(&s[0],"GET", sizeof("GET")) == 0){
+    if(strncmp(s,"GET", 3) == 0){
         result.type = Request::GET;
-        strncpy(result.url, &s[4], s - strrchr(s, ' ') + 1);
+        strncpy(result.url, &s[4], strrchr(s, ' ') - s - 4);
         readAndLogRequestLines(client);
-    } else if(strncmp(s,"POST", sizeof("POST")) == 0){
+    } else if(strncmp(s,"POST", 4) == 0){
         result.type = Request::POST;
         readAndLogRequestLines(client);
         if(client->available()){
+            memset(&s[0], 0, sizeof(s));
             client->readBytesUntil('\n', &s[0], sizeof(s));
-            if(strncmp(s, "power", sizeof("power")) == 0){
+            if(strncmp(s, "power",5) == 0){
                 if(isdigit(s[5])){
                     result.powerPort = s[5] - '0';
                 }
@@ -91,34 +92,35 @@ void WebServer::sendResponse(Stream *client, const char* url, int type) {
             char buffer[64] = {0};
             sprintf(buffer, "Refresh: 450; url=http://%d.%d.%d.%d%s",EthernetClass::localIP()[0],
                     EthernetClass::localIP()[1],EthernetClass::localIP()[2],EthernetClass::localIP()[3],url);
+            client->println("Content-Type: text/html");
             client->println(buffer);
         }
     }
-    const char* endOfUrl = strrchr(url, 0);
-    if(strncmp(endOfUrl - sizeof(".html"),".html", sizeof(".html")) == 0){
+    size_t length = strlen(url);
+    if(length > 5 && strcmp(url + length - 5, ".html") == 0){
         client->println("Content-Type: text/html");
-    } else if(strncmp(endOfUrl - sizeof(".json"),".json", sizeof(".json")) == 0){
+    } else if(length > 5 && strcmp(url + length - 5, ".json") == 0){
         client->println("Content-Type: application/json");
-    } else if(strncmp(endOfUrl - sizeof(".log"),".log", sizeof(".log")) == 0) {
+    } else if(length > 4 && strcmp(url + length - 4, ".log") == 0) {
         client->println("Content-Type: text/csv");
-    } else if(strncmp(endOfUrl - sizeof(".jpg"),".jpg", sizeof(".jpg")) == 0){
+    } else if(length > 4 && strcmp(url + length - 4, ".jpg") == 0){
         client->println("Content-Type: image/jpeg");
         //may need to finagle size in here
     }
     client->println("Connection: close");
     client->println();
 
-    if(strncmp(url, "/", sizeof("/")) == 0) {
+    if(strcmp(url, "/") == 0) {
         printIndexPage(client);
-    } else if(strncmp(url, "/sensors.json", sizeof("/sensors.json")) == 0){
+    } else if(strcmp(url, "/sensors.json") == 0){
         sensors->printJson(client);
-    } else if(strncmp(url, "/battery.json", sizeof("/battery.json")) == 0){
+    } else if(strcmp(url, "/battery.json") == 0){
         bms->printCellVoltages(client);
         bms->printFaults(client);
         bms->printStates(client);
-    } else if(strncmp(url, "/switches.json", sizeof("/switches.json")) == 0) {
+    } else if(strcmp(url, "/switches.json") == 0) {
         relay->printJSON(client);
-    }else if(strncmp(url, "/capture.jpg", sizeof("/capture.jpg")) == 0){
+    }else if(strcmp(url, "/capture.jpg") == 0){
         camera->captureAndPrintImage(client);
     } else {
         File page = SD.open(&url[1]);
@@ -135,6 +137,7 @@ void WebServer::readAndLogRequestLines(Stream *client) {
     char s[265]{0};
 
     while (client->available()) {
+        memset(&s[0], 0, sizeof(s));
         client->readBytesUntil('\n', &s[0], sizeof(s));
 #if DEBUG_WEB_SERVER
         if(Serial) Serial.println(s);

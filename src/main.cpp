@@ -64,9 +64,9 @@ void setup() {
     digitalWrite(ETHERNET_CS_PIN, HIGH);
 
     if (!SD.begin(SD_CARD_CS_PIN)) {
-        if(Serial) Serial.println("Card failed, or not present");
+        if(Serial) Serial.println("SDCard failed, or not present");
     }
-
+    Serial.println("Here");
     webServer->begin();
     ntp->begin();
     relay->begin();
