@@ -1,16 +1,23 @@
 #include "webserver.h"
 #include "indexpage.h"
+
+#include <cstring>
+#include <cctype>
+#if defined(ARDUINO)
 #include <SD.h>
+#else
+#include <MockSD.h>
+#endif
 
 void WebServer::handleHttpRequest() {
     EthernetClient client = server.available();
     if (client.available()) {
         Request request = parseRequest(&client);
         switch (request.type) {
-            case GET:
-                sendResponse(&client, request.url, GET);
+            case Request::GET:
+                sendResponse(&client, request.url, Request::GET);
                 break;
-            case POST:
+            case Request::POST:
                 switch(request.command){
                     case OFF:
                         relay->togglePort(request.powerPort, false);
@@ -26,7 +33,7 @@ void WebServer::handleHttpRequest() {
                     default:
                         break;
                 }
-                sendResponse(&client, "/", POST);
+                sendResponse(&client, "/", Request::POST);
             default:
                 break;
         }
@@ -36,28 +43,33 @@ void WebServer::handleHttpRequest() {
 }
 
 Request WebServer::parseRequest(Stream *client) {
-    Request result{};
+    Request result;
 
-    String s = client->readStringUntil('\n');
+    char s[265] {0};
+    client->readBytesUntil('\n', &s[0], sizeof(s));
 #if DEBUG_WEB_SERVER
     if(Serial) Serial.println(s);
 #endif
-    if(s.startsWith("GET")){
-        result.type = GET;
-        result.url = s.substring(4, s.lastIndexOf(' '));
+    if(strncmp(&s[0],"GET", sizeof("GET")) == 0){
+        result.type = Request::GET;
+        strncpy(result.url, &s[4], s - strrchr(s, ' ') + 1);
         readAndLogRequestLines(client);
-    } else if(s.startsWith("POST")){
-        result.type = POST;
+    } else if(strncmp(s,"POST", sizeof("POST")) == 0){
+        result.type = Request::POST;
         readAndLogRequestLines(client);
         if(client->available()){
-            s = client->readStringUntil('\n');
-            if(s.startsWith("power")){
-                result.powerPort = s.substring(5,6).toInt();
-                result.command = s.substring(7,8).toInt();
+            client->readBytesUntil('\n', &s[0], sizeof(s));
+            if(strncmp(s, "power", sizeof("power")) == 0){
+                if(isdigit(s[5])){
+                    result.powerPort = s[5] - '0';
+                }
+                if(isdigit(s[7])) {
+                    result.command = s[7] - '0';
+                }
             }
         }
     } else {
-        result.type = UNSUPPORTED;
+        result.type = Request::UNSUPPORTED;
     }
 #if DEBUG_WEB_SERVER
     if(Serial) Serial.println(result.url);
@@ -65,51 +77,51 @@ Request WebServer::parseRequest(Stream *client) {
     return result;
 }
 
-void WebServer::sendResponse(Stream *client, const String& url, int type) {
+void WebServer::sendResponse(Stream *client, const char* url, int type) {
     //print header
-    if (type == POST) {
+    if (type == Request::POST) {
         client->println("HTTP/1.1 303 See Other");
         char buffer[64] = {0};
         sprintf(buffer, "Location: http://%d.%d.%d.%d%s",EthernetClass::localIP()[0],EthernetClass::localIP()[1],
-                EthernetClass::localIP()[2],EthernetClass::localIP()[3],url.c_str());
+                EthernetClass::localIP()[2],EthernetClass::localIP()[3],url);
         client->println(buffer);
     } else {
         client->println("HTTP/1.1 200 OK");
-        if(url.equals("/")){
+        if(strncmp(url, "/", sizeof("/")) == 0){
             char buffer[64] = {0};
             sprintf(buffer, "Refresh: 450; url=http://%d.%d.%d.%d%s",EthernetClass::localIP()[0],
-                    EthernetClass::localIP()[1],EthernetClass::localIP()[2],EthernetClass::localIP()[3],url.c_str());
+                    EthernetClass::localIP()[1],EthernetClass::localIP()[2],EthernetClass::localIP()[3],url);
             client->println(buffer);
         }
     }
-
-    if(url.endsWith(".html")){
+    const char* endOfUrl = strrchr(url, 0);
+    if(strncmp(endOfUrl - sizeof(".html"),".html", sizeof(".html")) == 0){
         client->println("Content-Type: text/html");
-    } else if(url.endsWith(".json")){
+    } else if(strncmp(endOfUrl - sizeof(".json"),".json", sizeof(".json")) == 0){
         client->println("Content-Type: application/json");
-    } else if(url.endsWith(".log")) {
+    } else if(strncmp(endOfUrl - sizeof(".log"),".log", sizeof(".log")) == 0) {
         client->println("Content-Type: text/csv");
-    } else if(url.endsWith(".jpg")){
+    } else if(strncmp(endOfUrl - sizeof(".jpg"),".jpg", sizeof(".jpg")) == 0){
         client->println("Content-Type: image/jpeg");
         //may need to finagle size in here
     }
     client->println("Connection: close");
     client->println();
 
-    if(url.equals("/")) {
+    if(strncmp(url, "/", sizeof("/")) == 0) {
         printIndexPage(client);
-    } else if(url.equals("/sensors.json")){
+    } else if(strncmp(url, "/sensors.json", sizeof("/sensors.json")) == 0){
         sensors->printJson(client);
-    } else if(url.equals("/battery.json")){
+    } else if(strncmp(url, "/battery.json", sizeof("/battery.json")) == 0){
         bms->printCellVoltages(client);
         bms->printFaults(client);
         bms->printStates(client);
-    } else if(url.equals("/switches.json")) {
+    } else if(strncmp(url, "/switches.json", sizeof("/switches.json")) == 0) {
         relay->printJSON(client);
-    }else if(url.equals("/capture.jpg")){
+    }else if(strncmp(url, "/capture.jpg", sizeof("/capture.jpg")) == 0){
         camera->captureAndPrintImage(client);
     } else {
-        File page = SD.open(url.substring(1));
+        File page = SD.open(&url[1]);
         uint8_t buffer[1024] = {0};
         while(page.available() > 0){
             int bytesToBeRead = min((unsigned int) page.available(), sizeof(buffer));
@@ -120,12 +132,14 @@ void WebServer::sendResponse(Stream *client, const String& url, int type) {
 }
 
 void WebServer::readAndLogRequestLines(Stream *client) {
+    char s[265]{0};
+
     while (client->available()) {
-        String s = client->readStringUntil('\n');
+        client->readBytesUntil('\n', &s[0], sizeof(s));
 #if DEBUG_WEB_SERVER
         if(Serial) Serial.println(s);
 #endif
-        if(s.equals(String('\r'))){
+        if(s[0] == '\r'){
             break;
         }
     }
@@ -154,11 +168,14 @@ void WebServer::printIndexPage(Stream *client) {
     }
 }
 
-void WebServer::begin(Relay* aRelayPtr, Bms* aBmsPtr, Sensors* aSensorPtr, Camera* aCameraPtr) {
+WebServer::WebServer(Relay *aRelayPtr, Bms *aBmsPtr, Sensors *aSensorPtr, Camera *aCameraPtr) {
     this->relay = aRelayPtr;
     this->bms = aBmsPtr;
     this->sensors = aSensorPtr;
     this->camera = aCameraPtr;
+}
+
+void WebServer::begin() {
     EthernetClass::begin(mac);
     if(!EthernetClass::begin(mac)){
         if(Serial) Serial.println("Ethernet/DHCP failed");

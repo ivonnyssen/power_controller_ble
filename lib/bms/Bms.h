@@ -35,9 +35,13 @@ POSSIBILITY OF SUCH DAMAGE.
 #ifndef POWER_CONTROLLER_EVERY_BMS_H
 #define POWER_CONTROLLER_EVERY_BMS_H
 
-#ifdef ARDUINO
-
+#include <ctime>
+#if defined(ARDUINO)
 #include <Arduino.h>
+#else
+#include <MockArduino.h>
+#endif
+
 #include "ProtectionStatus.h"
 
 #define BMS_OPTION_DEBUG true
@@ -104,9 +108,9 @@ public:
 
 class Bms {
 public:
-    Bms();
+    explicit Bms(Stream* port);
 
-    void begin(Stream *port, uint16_t timeout = 1000); // serial port stream and timeout
+    void begin(uint16_t timeout = 1000); // serial port stream and timeout
     void poll(); // Call this every time you want to poll the Bms
     bool hasComError() const;  // Returns true if there was a timeout or checksum error on the last call
 
@@ -125,7 +129,7 @@ public:
     uint8_t numTemperatureSensors;
     float temperatures[NUM_TEMP_SENSORS]{};
     float cellVoltages[NUM_CELLS]{};
-    String name;
+    char name[32]{0};
     float minVoltage24;
     float maxVoltage24;
     float maxCharge24;
@@ -153,7 +157,7 @@ private:
     static bool validateResponse(uint8_t *buffer, uint8_t command, int bytesReceived);
     void parseBasicInfoResponse(const uint8_t *buffer);
     void parseVoltagesResponse(const uint8_t *buffer);
-    void parseNameResponse(const uint8_t *buffer);
+    void parseNameResponse(const uint8_t *buffer, uint8_t length);
 
 #if BMS_OPTION_DEBUG
     void debug();  // Calling this method will print out the received data to the main serial port
@@ -169,7 +173,5 @@ private:
     void queryCellVoltages();
     void queryBmsName();
 };
-
-#endif
 
 #endif //POWER_CONTROLLER_EVERY_BMS_H

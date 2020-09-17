@@ -1,5 +1,9 @@
 #include "Sensors.h"
+#if defined(ARDUINO)
 #include <SD.h>
+#else
+#include <MockSD.h>
+#endif
 void Sensors::measureAndLog() {
     for(int i = 0; i < numSensorRecords - 1; i++){
         sensorData[i] = sensorData[i + 1];

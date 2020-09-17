@@ -1,4 +1,4 @@
-
+#if defined(ARDUINO)
 #include "Ntp.h"
 // send an NTP request to the time server at the given address
 void Ntp::sendPacket(const char * address) {
@@ -64,3 +64,5 @@ Ntp::Ntp(int aTimeZone) {
     Ntp::timeZone = aTimeZone;
     lastSyncTime = 0;
 }
+
+#endif //ARDUINO

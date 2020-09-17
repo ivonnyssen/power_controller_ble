@@ -1,7 +1,11 @@
 #ifndef POWER_CONTROLLER_BLE_PROTECTIONSTATUS_H
 #define POWER_CONTROLLER_BLE_PROTECTIONSTATUS_H
 
+#if defined(ARDUINO)
 #include <Arduino.h>
+#else
+#include <MockArduino.h>
+#endif
 
 class ProtectionStatus {
 public:
@@ -15,7 +19,9 @@ public:
 
     void printFaultCounts(Stream *client) const;
 
+#ifndef UNIT_TEST
 private:
+#endif
     bool singleCellOvervoltageProtection;
     bool singleCellUndervoltageProtection;
     bool wholePackOvervoltageProtection;

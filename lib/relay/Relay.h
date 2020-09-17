@@ -2,7 +2,11 @@
 #ifndef POWER_CONTROLLER_BLE_RELAY_H
 #define POWER_CONTROLLER_BLE_RELAY_H
 
+#if defined(ARDUINO)
 #include <Arduino.h>
+#else
+#include <MockArduino.h>
+#endif
 
 #define PORT0_PIN 2
 #define PORT1_PIN 3

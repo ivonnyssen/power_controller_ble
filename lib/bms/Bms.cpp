@@ -32,11 +32,13 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifdef ARDUINO
+//#ifdef ARDUINO
 
 #include <Bms.h>
+#include <cstring>
 
-Bms::Bms() {
+Bms::Bms(Stream *port){
+    serial = port;
     totalVoltage = 0;
     current = 0;
     balanceCapacity = 0;
@@ -50,8 +52,6 @@ Bms::Bms() {
     isChargeFetEnabled = false;
     numCells = 0;
     numTemperatureSensors = 0;
-    name = String("");
-
     comError = false;
     balanceStatus = 0;
     lastPollTime = 0;
@@ -62,11 +62,10 @@ Bms::Bms() {
     serial = nullptr;
 }
 
-void Bms::begin(Stream *port, uint16_t timeout) {
+void Bms::begin(uint16_t timeout) {
 #if BMS_OPTION_DEBUG
     Serial.println("OverkillSolarBMS Begin!");
 #endif
-    serial = port;
     serial->setTimeout(timeout);
 }
 
@@ -79,7 +78,7 @@ void Bms::poll() {
         maxCharge24 = current > maxCharge24 ? current : maxCharge24;
         maxDischarge24 = current < -maxDischarge24 ? -current : maxDischarge24;
         queryCellVoltages();
-        if(name.equals("")){
+        if(name[0] == 0){
             queryBmsName();
         }
     }
@@ -109,9 +108,7 @@ void Bms::setMosfetControl(bool charge, bool discharge) {
     uint8_t data[] = {START_BYTE, WRITE, CMD_CTL_MOSFET, 0x02, 0x00, 0x00, 0x00, 0x00, STOP_BYTE};
     calculateMosfetCommandString(data, charge, discharge);
 
-    if(serial->availableForWrite()){
-        serial->write(data, sizeof(data));
-    }
+    serial->write(data, sizeof(data));
 
     uint8_t buffer[RX_BUFFER_SIZE] {0};
     comError = validateResponse(buffer, CMD_CTL_MOSFET, 0);
@@ -206,9 +203,7 @@ void Bms::queryBasicInfo() {
 #if BMS_OPTION_DEBUG
     Serial.println("Query 0x03 Basic Info");
 #endif
-    if(serial->availableForWrite()){
-        serial->write(basicSystemInfoCommand, sizeof(basicSystemInfoCommand));
-    }
+    serial->write(basicSystemInfoCommand, sizeof(basicSystemInfoCommand));
 
     uint8_t buffer[RX_BUFFER_SIZE] {0};
 
@@ -237,7 +232,7 @@ void Bms::parseBasicInfoResponse(const uint8_t *buffer) {
     numTemperatureSensors = buffer[26];
 
     for (int i = 0; i < min(numTemperatureSensors, NUM_TEMP_SENSORS); i++) {
-        temperatures[i] = 0.1f * (float) ((uint16_t)(buffer[27 + (i * 2)] << 8u) | (uint16_t)(buffer[28 + (i * 2)])) - 273.15f;
+        temperatures[i] = 0.1f * (float) (((uint16_t)(buffer[27 + (i * 2)] << 8u) | (uint16_t)(buffer[28 + (i * 2)]))-2731);
     }
 }
 
@@ -247,9 +242,7 @@ void Bms::queryCellVoltages() {
     Serial.println("Query 0x04 Cell Voltages");
 #endif
 
-    if(serial->availableForWrite()){
-        serial->write(cellVoltagesCommand, sizeof(cellVoltagesCommand));
-    }
+    serial->write(cellVoltagesCommand, sizeof(cellVoltagesCommand));
 
     uint8_t buffer[RX_BUFFER_SIZE] {0};
     int bytesReceived = serial->readBytesUntil((char)STOP_BYTE, buffer, sizeof(buffer));
@@ -271,9 +264,7 @@ void Bms::queryBmsName() {
 #if BMS_OPTION_DEBUG
     Serial.println("Query 0x05 Bms Name");
 #endif
-    if(serial->availableForWrite()){
-        serial->write(nameCommand, sizeof(nameCommand));
-    }
+    serial->write(nameCommand, sizeof(nameCommand));
 
     uint8_t buffer[RX_BUFFER_SIZE] {0};
     int bytesReceived = serial->readBytesUntil((char)STOP_BYTE, buffer, sizeof(buffer));
@@ -282,14 +273,12 @@ void Bms::queryBmsName() {
         return;
     }
 
-    parseNameResponse(buffer);
+    parseNameResponse(buffer, buffer[3]);
 }
 
-void Bms::parseNameResponse(const uint8_t *buffer) {
-    name = String();
-    for(int i = 4; i < buffer[3] + 4; i++){
-        name.concat((char)buffer[i]);
-    }
+void Bms::parseNameResponse(const uint8_t *buffer, uint8_t length) {
+    memset(&name[0], 0, sizeof(name));
+    strncpy(&name[0], reinterpret_cast<const char *>(&buffer[4]), min(sizeof(name), length));
 }
 
 uint16_t Bms::calculateChecksum(const uint8_t *buffer, int len) {
@@ -370,4 +359,4 @@ void Bms::printStates(Stream *client) {
     client->println("}");
 }
 
-#endif
+//#endif

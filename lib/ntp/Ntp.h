@@ -1,6 +1,7 @@
 
 #ifndef POWER_CONTROLLER_BLE_NTP_H
 #define POWER_CONTROLLER_BLE_NTP_H
+#if defined(ARDUINO)
 #include <Ethernet.h>
 #include <mbed.h>
 
@@ -27,5 +28,7 @@ private:
     time_t getTime();
     void sendPacket(const char * address);
 };
+
+#endif //Arduino
 
 #endif //POWER_CONTROLLER_BLE_NTP_H

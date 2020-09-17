@@ -1,15 +1,10 @@
-//
-// Created by Igor von Nyssen on 9/9/20.
-//
-
 #if defined(ARDUINO) && defined(UNIT_TEST)
 
 #include <unity.h>
-#include <Arduino.h>
-#include <bms.h>
+#include <Bms.h>
 
 //turn on below to test one at a time if flash is low
-#define TEST_STRUCS false
+#define TEST_STRUCS true
 #define TEST_COMMANDS1 false
 #define TEST_COMMANDS2 false
 #define TEST_VALIDATE_BASIC_INFO false
@@ -21,8 +16,8 @@ void testSoftwareVersion(){
     TEST_ASSERT_EQUAL(0, version.minor);
 }
 
-void testSoftwareVersionAssignment(){
-    SoftwareVersion version = 0x10;
+void testSoftwareVersionFromUint8_t(){
+    SoftwareVersion version = SoftwareVersion(0x10);
     TEST_ASSERT_EQUAL(1, version.major);
     TEST_ASSERT_EQUAL(0, version.minor);
 }
@@ -34,8 +29,8 @@ void testProductionDate(){
     TEST_ASSERT_EQUAL(2000, date.year);
 }
 
-void testProductionDateAssignment(){
-    ProductionDate date = (uint16_t) 0x2068;
+void testProductionDateFromUint16_t(){
+    ProductionDate date = ProductionDate(0x2068);
     TEST_ASSERT_EQUAL(8, date.day);
     TEST_ASSERT_EQUAL(3, date.month);
     TEST_ASSERT_EQUAL(2016, date.year);
@@ -58,8 +53,8 @@ void testProtectionStatus() {
     TEST_ASSERT_EQUAL(false, status.softwareLockMos);
 }
 
-void testProtectionStatusAssignment() {
-    ProtectionStatus status = 0x1FFF;
+void testProtectionStatusFromUint16_t() {
+    ProtectionStatus status = ProtectionStatus(0x1FFF);
     TEST_ASSERT_EQUAL(true, status.singleCellOvervoltageProtection);
     TEST_ASSERT_EQUAL(true, status.singleCellUndervoltageProtection);
     TEST_ASSERT_EQUAL(true, status.wholePackOvervoltageProtection);
@@ -76,59 +71,59 @@ void testProtectionStatusAssignment() {
 }
 
 void testCalculateChecksumCmdBasicSystemInfo(){
-    BMS bms;
+    Bms bms(&Serial1);
     uint8_t *data = bms.basicSystemInfoCommand;
-    TEST_ASSERT_EQUAL(0xFFFD, BMS::calculateChecksum(&data[2], 2));
+    TEST_ASSERT_EQUAL(0xFFFD, Bms::calculateChecksum(&data[2], 2));
 }
 
 void testCalculateChecksumCmdCellVoltages(){
-    BMS bms;
+    Bms bms(&Serial1);
     uint8_t *data = bms.cellVoltagesCommand;
-    TEST_ASSERT_EQUAL(0xFFFC, BMS::calculateChecksum(&data[2], 2));
+    TEST_ASSERT_EQUAL(0xFFFC, Bms::calculateChecksum(&data[2], 2));
 }
 
 void testCalculateChecksumCmdName(){
-    BMS bms;
+    Bms bms(&Serial1);
     uint8_t *data = bms.nameCommand;
-    TEST_ASSERT_EQUAL(0xFFFB, BMS::calculateChecksum(&data[2], 2));
+    TEST_ASSERT_EQUAL(0xFFFB, Bms::calculateChecksum(&data[2], 2));
 }
 
 void testMosfetCommandStringNoChargeNoDischarge(){
-    BMS bms;
+    Bms bms(&Serial1);
     uint8_t data[] = {START_BYTE, WRITE, CMD_CTL_MOSFET, 0x02, 0x00, 0x00, 0x00, 0x00, STOP_BYTE};
     bms.calculateMosfetCommandString(data, false, false);
-    TEST_ASSERT_EQUAL_HEX(0xFF1A, BMS::calculateChecksum(&data[2], 4));
+    TEST_ASSERT_EQUAL_HEX(0xFF1A, Bms::calculateChecksum(&data[2], 4));
 }
 
 void testMosfetCommandStringChargeNoDischarge(){
-    BMS bms;
+    Bms bms(&Serial1);
     uint8_t data[]  = {START_BYTE, WRITE, CMD_CTL_MOSFET, 0x02, 0x00, 0x00, 0x00, 0x00, STOP_BYTE};
     bms.calculateMosfetCommandString(data, true, false);
-    TEST_ASSERT_EQUAL_HEX(0xFF1B, BMS::calculateChecksum(&data[2], 4));
+    TEST_ASSERT_EQUAL_HEX(0xFF1B, Bms::calculateChecksum(&data[2], 4));
 }
 
 void testMosfetCommandStringNoChargeDischarge(){
-    BMS bms;
+    Bms bms(&Serial1);
     uint8_t data[]  = {START_BYTE, WRITE, CMD_CTL_MOSFET, 0x02, 0x00, 0x00, 0x00, 0x00, STOP_BYTE};
     bms.calculateMosfetCommandString(data, false, true);
-    TEST_ASSERT_EQUAL_HEX(0xFF1C, BMS::calculateChecksum(&data[2], 4));
+    TEST_ASSERT_EQUAL_HEX(0xFF1C, Bms::calculateChecksum(&data[2], 4));
 }
 
 void testMosfetCommandStringChargeDischarge(){
-    BMS bms;
+    Bms bms(&Serial1);
     uint8_t data[]  = {START_BYTE, WRITE, CMD_CTL_MOSFET, 0x02, 0x00, 0x00, 0x00, 0x00, STOP_BYTE};
     bms.calculateMosfetCommandString(data, true, true);
-    TEST_ASSERT_EQUAL_HEX(0xFF1D, BMS::calculateChecksum(&data[2], 4));
+    TEST_ASSERT_EQUAL_HEX(0xFF1D, Bms::calculateChecksum(&data[2], 4));
 }
 
 void testValidateResponse(){
-    BMS bms;
+    Bms bms(&Serial1);
     uint8_t data[]  = {0xDD, 0x03, 0x00, 0x1B, 0x17, 0x00, 0x00, 0x00, 0x02, 0xD0, 0x03, 0xE8, 0x00, 0x00, 0x20, 0x78, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x48, 0x03, 0x0F, 0x02, 0x0B, 0x76, 0x0B, 0x82, 0xFB, 0xFF};
     TEST_ASSERT_EQUAL(true, bms.validateResponse(data, 0x03, sizeof(data)));
 }
 
 void testBasicInfoResponse(){
-    BMS bms;
+    Bms bms(&Serial1);
     uint8_t data[]  = {0xDD, 0x03, 0x00, 0x1B, 0x17, 0x00, 0x00, 0x00, 0x02, 0xD0, 0x03, 0xE8, 0x00, 0x00, 0x20, 0x78, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x48, 0x03, 0x0F, 0x02, 0x0B, 0x76, 0x0B, 0x82, 0xFB, 0xFF};
     bms.parseBasicInfoResponse(data);
     TEST_ASSERT_EQUAL_FLOAT(58.88, bms.totalVoltage);
@@ -143,19 +138,19 @@ void testBasicInfoResponse(){
         TEST_ASSERT_EQUAL(false, bms.isBalancing(i));
     }
 
-    TEST_ASSERT_EQUAL(0, bms.faultCounts.singleCellOvervoltageProtection);
-    TEST_ASSERT_EQUAL(0, bms.faultCounts.singleCellUndervoltageProtection);
-    TEST_ASSERT_EQUAL(0, bms.faultCounts.wholePackOvervoltageProtection);
-    TEST_ASSERT_EQUAL(0, bms.faultCounts.wholePackUndervoltageProtection);
-    TEST_ASSERT_EQUAL(0, bms.faultCounts.chargingOverTemperatureProtection);
-    TEST_ASSERT_EQUAL(0, bms.faultCounts.chargingLowTemperatureProtection);
-    TEST_ASSERT_EQUAL(0, bms.faultCounts.dischargeOverTemperatureProtection);
-    TEST_ASSERT_EQUAL(0, bms.faultCounts.dischargeLowTemperatureProtection);
-    TEST_ASSERT_EQUAL(0, bms.faultCounts.chargingOvercurrentProtection);
-    TEST_ASSERT_EQUAL(0, bms.faultCounts.dischargeOvercurrentProtection);
-    TEST_ASSERT_EQUAL(0, bms.faultCounts.shortCircuitProtection);
-    TEST_ASSERT_EQUAL(0, bms.faultCounts.frontEndDetectionIcError);
-    TEST_ASSERT_EQUAL(0, bms.faultCounts.softwareLockMos);
+    TEST_ASSERT_EQUAL(0, bms.protectionStatus.singleCellOvervoltageProtectionCount);
+    TEST_ASSERT_EQUAL(0, bms.protectionStatus.singleCellUndervoltageProtection);
+    TEST_ASSERT_EQUAL(0, bms.protectionStatus.wholePackOvervoltageProtection);
+    TEST_ASSERT_EQUAL(0, bms.protectionStatus.wholePackUndervoltageProtection);
+    TEST_ASSERT_EQUAL(0, bms.protectionStatus.chargingOverTemperatureProtection);
+    TEST_ASSERT_EQUAL(0, bms.protectionStatus.chargingLowTemperatureProtection);
+    TEST_ASSERT_EQUAL(0, bms.protectionStatus.dischargeOverTemperatureProtection);
+    TEST_ASSERT_EQUAL(0, bms.protectionStatus.dischargeLowTemperatureProtection);
+    TEST_ASSERT_EQUAL(0, bms.protectionStatus.chargingOvercurrentProtection);
+    TEST_ASSERT_EQUAL(0, bms.protectionStatus.dischargeOvercurrentProtection);
+    TEST_ASSERT_EQUAL(0, bms.protectionStatus.shortCircuitProtection);
+    TEST_ASSERT_EQUAL(0, bms.protectionStatus.frontEndDetectionIcError);
+    TEST_ASSERT_EQUAL(0, bms.protectionStatus.softwareLockMos);
     TEST_ASSERT_EQUAL(false, bms.protectionStatus.singleCellOvervoltageProtection);
     TEST_ASSERT_EQUAL(false, bms.protectionStatus.singleCellUndervoltageProtection);
     TEST_ASSERT_EQUAL(false, bms.protectionStatus.wholePackOvervoltageProtection);
@@ -181,7 +176,7 @@ void testBasicInfoResponse(){
 }
 
 void testVoltagesResponse(){
-    BMS bms;
+    Bms bms(&Serial1);
     bms.numCells = 15;
     uint8_t data[]  = {0xDD, 0x04, 0x00, 0x1E, 0x0F, 0x66, 0x0F, 0x63, 0x0F, 0x63, 0x0F, 0x64, 0x0F, 0x3E, 0x0F, 0x63, 0x0F, 0x37, 0x0F, 0x5B, 0x0F, 0x65, 0x0F, 0x3B, 0x0F, 0x63, 0x0F, 0x63, 0x0F, 0x3C, 0x0F, 0x66, 0x0F, 0x3D, 0xF9, 0xF9};
     bms.parseVoltagesResponse(data);
@@ -196,10 +191,10 @@ void testVoltagesResponse(){
 }
 
 void testNameResponse(){
-    BMS bms;
+    Bms bms(&Serial1);
     uint8_t data[]  = {0xDD, 0x05, 0x00, 0x0A, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0xFD, 0xE9};
-    bms.parseNameResponse(data);
-    TEST_ASSERT_EQUAL_STRING("0123456789", bms.name.c_str());
+    bms.parseNameResponse(data, 0x0A);
+    TEST_ASSERT_EQUAL_STRING("0123456789", bms.name);
 }
 
 void setup() {
