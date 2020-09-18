@@ -38,5 +38,5 @@ void Relay::begin() {
 
 void Relay::togglePort(uint8_t portNumber, bool on) {
     ports[portNumber] = on;
-    digitalWrite(getPinForPort(portNumber), LOW);
+    digitalWrite(getPinForPort(portNumber), on ? LOW : HIGH);
 }

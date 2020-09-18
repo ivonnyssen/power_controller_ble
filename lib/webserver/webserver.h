@@ -37,7 +37,9 @@ public:
     WebServer(Relay* aRelayPtr, Bms* aBmsPtr, Sensors* aSensorPtr, Camera* aCameraPtr);
     void begin();
     void handleHttpRequest();
+#ifndef UNIT_TEST
 private:
+#endif
     uint8_t mac[6] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
     EthernetServer server = EthernetServer(LISTEN_PORT);
     Relay* relay{};
@@ -48,6 +50,7 @@ private:
     static void readAndLogRequestLines(Stream *client);
     void sendResponse(Stream *client, const char* url, int type);
     static void printIndexPage(Stream *client) ;
+    static bool strEndsWith(const char *source, const char* end);
 };
 
 #endif //POWER_CONTROLLER_BLE_WEBSERVER_H

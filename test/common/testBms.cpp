@@ -1,3 +1,4 @@
+#if defined(UNIT_TEST)
 #include "testBms.h"
 #include <unity.h>
 #include <Bms.h>
@@ -208,3 +209,5 @@ void testBmsAll(){
     RUN_TEST(testVoltagesResponse);
     RUN_TEST(testNameResponse);
 }
+
+#endif

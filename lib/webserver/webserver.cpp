@@ -54,7 +54,7 @@ Request WebServer::parseRequest(Stream *client) {
         result.type = Request::GET;
         strncpy(result.url, &s[4], strrchr(s, ' ') - s - 4);
         readAndLogRequestLines(client);
-    } else if(strncmp(s,"POST", 4) == 0){
+    } else if(strncmp(&s[0],"POST", 4) == 0){
         result.type = Request::POST;
         readAndLogRequestLines(client);
         if(client->available()){
@@ -78,6 +78,12 @@ Request WebServer::parseRequest(Stream *client) {
     return result;
 }
 
+bool WebServer::strEndsWith(const char *source, const char *end) {
+    size_t sourceLength = strlen(source);
+    size_t endLength = strlen(end);
+    return (sourceLength >= endLength && strcmp(source + sourceLength - endLength, end) == 0);
+}
+
 void WebServer::sendResponse(Stream *client, const char* url, int type) {
     //print header
     if (type == Request::POST) {
@@ -88,7 +94,7 @@ void WebServer::sendResponse(Stream *client, const char* url, int type) {
         client->println(buffer);
     } else {
         client->println("HTTP/1.1 200 OK");
-        if(strncmp(url, "/", sizeof("/")) == 0){
+        if(strncmp(url, "/", 1) == 0){
             char buffer[64] = {0};
             sprintf(buffer, "Refresh: 450; url=http://%d.%d.%d.%d%s",EthernetClass::localIP()[0],
                     EthernetClass::localIP()[1],EthernetClass::localIP()[2],EthernetClass::localIP()[3],url);
@@ -96,14 +102,13 @@ void WebServer::sendResponse(Stream *client, const char* url, int type) {
             client->println(buffer);
         }
     }
-    size_t length = strlen(url);
-    if(length > 5 && strcmp(url + length - 5, ".html") == 0){
+    if(strEndsWith(url, ".html")){
         client->println("Content-Type: text/html");
-    } else if(length > 5 && strcmp(url + length - 5, ".json") == 0){
+    } else if(strEndsWith(url, ".json")){
         client->println("Content-Type: application/json");
-    } else if(length > 4 && strcmp(url + length - 4, ".log") == 0) {
+    } else if(strEndsWith(url, ".log") == 0) {
         client->println("Content-Type: text/csv");
-    } else if(length > 4 && strcmp(url + length - 4, ".jpg") == 0){
+    } else if(strEndsWith(url, ".jpg") == 0){
         client->println("Content-Type: image/jpeg");
         //may need to finagle size in here
     }

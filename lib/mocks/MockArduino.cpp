@@ -18,6 +18,8 @@ void pinMode(pin_size_t pinNumber, PinMode pinMode) { }
 
 void digitalWrite(pin_size_t pin, PinStatus val) { }
 
+PinStatus digitalRead(pin_size_t pin){ return HIGH; }
+
 void delay(int milliSeconds) { }
 
 SerialUsb Serial;

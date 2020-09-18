@@ -10,21 +10,21 @@ public:
 
 class EthernetServer {
 public:
-    explicit EthernetServer(int listenPort){}
-    void begin(){}
-    static EthernetClient available(){ return {};}
+    explicit EthernetServer(int listenPort);
+    void begin();
+    static EthernetClient available();
 };
 
 class IPAddress : public Printable{
 public:
-    uint8_t operator[](int index) const { return _address[index]; };
+    uint8_t operator[](int index) const;
 private:
     uint8_t _address[4] = {192,168,2,14};
 };
 
 class EthernetClass{
 public:
-    static int begin(uint8_t *mac, unsigned long timeout = 60000, unsigned long responseTimeout = 4000){ return 1;}
+    static int begin(uint8_t *mac, unsigned long timeout = 60000, unsigned long responseTimeout = 4000);
     static IPAddress localIP();
 };
 
